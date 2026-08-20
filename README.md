@@ -45,12 +45,12 @@ sends the pair back in full — so the other 7 profiles are never lost.
 
 ## Commands
 
-- `atk-dpi list` — finds connected ATK/VXE devices by HID VID
+- `Linux-ATK list` — finds connected ATK/VXE devices by HID VID
   (`0x373b`, `0x3554`).
-- `atk-dpi get` — reads and prints all 8 DPI profiles.
-- `atk-dpi set SLOT VALUE` — sets DPI for profile SLOT (1-8). `VALUE`
+- `Linux-ATK get` — reads and prints all 8 DPI profiles.
+- `Linux-ATK set SLOT VALUE` — sets DPI for profile SLOT (1-8). `VALUE`
   must be a multiple of 50, in the range 100–30000.
-- `atk-dpi select SLOT` — switches the active profile to SLOT (1-8),
+- `Linux-ATK select SLOT` — switches the active profile to SLOT (1-8),
   without changing the DPI value itself — equivalent to clicking a DPI
   button in ATK HUB.
 
@@ -58,7 +58,7 @@ VID/PID and the working HID interface (usage_page/usage) are detected
 automatically: the utility finds the device itself and tries known
 vendor-specific interfaces until one responds. Manually specifying
 `--vid`/`--pid`/`--usage-page`/`--usage` is only needed if
-auto-detection fails on a particular model/firmware — see `atk-dpi list`
+auto-detection fails on a particular model/firmware — see `Linux-ATK list`
 for the actual values.
 
 ## Building
@@ -81,10 +81,10 @@ this gist: `https://gist.github.com/Speyll/b7803161b1ee43f258d484fe9e92c4b4`
 ## Usage
 
 ```bash
-atk-dpi list
-atk-dpi get
-atk-dpi set 1 1600
-atk-dpi select 1
+Linux-ATK list
+Linux-ATK get
+Linux-ATK set 1 1600
+Linux-ATK select 1
 ```
 
 If interface auto-detection fails (`Could not find a working HID
@@ -92,7 +92,7 @@ interface...`), run `atk-dpi list`, find your mouse's vendor-specific
 interface (usage_page is usually `0xffXX`), and pass it explicitly:
 
 ```bash
-atk-dpi --usage-page ff02 --usage 2 get
+Linux-ATK --usage-page ff02 --usage 2 get
 ```
 
 The `--debug` flag prints the raw bytes of every HID request and
