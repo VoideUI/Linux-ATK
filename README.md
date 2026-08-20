@@ -1,7 +1,5 @@
 # Linux-ATK
 
-A Rust command-line utility for managing DPI on ATK/VXE mice over HID, without the official ATK HUB software.
-
 The modules `command.rs`, `device.rs`, `types.rs` are actual
 source files from the reverse-engineered ATK protocol, included directly.
 The only substantive change made to them is replacing `static` with
