@@ -1,0 +1,25 @@
+[package]
+name = "atk-dpi-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal utility for controlling DPI of ATK/VXE mice on Linux"
+license = "GPL-3.0"
+ 
+[[bin]]
+name = "Linux-ATK"
+path = "src/main.rs"
+ 
+[dependencies]
+# Низкоуровневый HID-доступ. На Linux явно выбран backend linux-shared-hidraw,
+# чтобы не зависеть от udev-dev / libusb — нужен только системный пакет
+# hidapi (см. README).
+hidapi = { version = "2", default-features = false, features = ["linux-shared-hidraw"] }
+ 
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+ 
+# Модули src/command.rs, src/device.rs, src/types.rs — это исходники
+# реверс-инжинирингового протокола ATK, предоставленные напрямую
+# (изначально из крейта libatk-rs, https://github.com/cyberphantom52/libatk-rs),
+# а не подключённые как внешняя зависимость — так что дополнительных
+# записей в [dependencies] для них не требуется.

@@ -1,0 +1,1 @@
+/home/alex/Документы/Code/Linux-ATK/target/release/Linux-ATK: /home/alex/Документы/Code/Linux-ATK/src/command.rs /home/alex/Документы/Code/Linux-ATK/src/device.rs /home/alex/Документы/Code/Linux-ATK/src/main.rs /home/alex/Документы/Code/Linux-ATK/src/types.rs
