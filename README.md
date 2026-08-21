@@ -88,7 +88,7 @@ Linux-ATK select 1
 ```
 
 If interface auto-detection fails (`Could not find a working HID
-interface...`), run `atk-dpi list`, find your mouse's vendor-specific
+interface...`), run `Linux-ATK list`, find your mouse's vendor-specific
 interface (usage_page is usually `0xffXX`), and pass it explicitly:
 
 ```bash
