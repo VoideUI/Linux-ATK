@@ -1,13 +1,7 @@
-mod command;
-mod device;
-mod types;
-
+use libatk_rs::prelude::*;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use command::{Command, CommandDescriptor};
-use device::Device;
 use hidapi::HidApi;
-use types::{CommandId, EEPROMAddress};
 
 /// Known Vendor IDs for ATK/VXE devices.
 const ATK_VENDOR_IDS: [u16; 2] = [0x373b, 0x3554];
@@ -138,7 +132,7 @@ fn connect(api: &HidApi, cli: &Cli) -> Result<Device> {
         return open_device(vid, pid, usage_page, usage);
     }
 
-    autodetect_interface(api, vid, pid, cli.debug)
+    autodetect_interface(vid, pid, cli.debug)
 }
 
 fn list_devices(api: &HidApi, vid_filter: Option<u16>) -> Result<()> {
@@ -211,7 +205,7 @@ fn open_device(vid: u16, pid: u16, usage_page: u16, usage: u16) -> Result<Device
 /// VID/PID, probing each with a harmless read (ReportRate address, 10
 /// bytes) — the first one that replies with status=0 is considered the
 /// working ATK protocol interface.
-fn autodetect_interface(api: &HidApi, vid: u16, pid: u16, debug: bool) -> Result<Device> {
+fn autodetect_interface(vid: u16, pid: u16, debug: bool) -> Result<Device> {
     for &(usage_page, usage) in INTERFACE_CANDIDATES.iter() {
         let Ok(device) = Device::new(vid, pid, usage_page, usage) else {
             continue;

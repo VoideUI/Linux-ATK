@@ -17,6 +17,7 @@ hidapi = { version = "2", default-features = false, features = ["linux-shared-hi
  
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+libatk-rs = "0.1.10"
  
 # Модули src/command.rs, src/device.rs, src/types.rs — это исходники
 # реверс-инжинирингового протокола ATK, предоставленные напрямую
