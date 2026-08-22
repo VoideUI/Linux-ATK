@@ -73,12 +73,31 @@ enum Command_ {
     /// List all connected ATK/VXE HID devices.
     List,
 
+    /// Manage DPI profiles (8 slots).
+    Dpi {
+        #[command(subcommand)]
+        action: DpiAction,
+    },
+
+    /// Manage the HID polling (report) rate.
+    Rate {
+        #[command(subcommand)]
+        action: RateAction,
+    },
+
+    /// Manage the sensor sampling mode (base / competitive firmware).
+    SensorMode {
+        #[command(subcommand)]
+        action: SensorModeAction,
+    },
+}
+
+#[derive(Subcommand, Clone, Copy)]
+enum DpiAction {
     /// Read all 8 DPI profiles from the mouse.
-    #[command(alias = "get-dpi")]
     Get,
 
-    /// Set DPI for one of the 8 profiles. Example: atk-dpi set 5 3500
-    #[command(alias = "set-dpi")]
+    /// Set DPI for one of the 8 profiles. Example: atk-dpi dpi set 5 3500
     Set {
         /// Profile number, 1-8 (corresponds to DPI1..DPI8 in ATK HUB).
         slot: u8,
@@ -89,12 +108,43 @@ enum Command_ {
 
     /// Switch the active DPI profile (does not change the value, only
     /// selects one of the already configured 8 profiles). Example:
-    /// atk-dpi select 5
-    #[command(alias = "select-dpi")]
+    /// atk-dpi dpi select 5
     Select {
         /// Profile number, 1-8 (corresponds to DPI1..DPI8 in ATK HUB).
         slot: u8,
     },
+}
+
+#[derive(Subcommand, Clone, Copy)]
+enum RateAction {
+    /// Read the current polling rate.
+    Get,
+
+    /// Set the polling rate. Example: atk-dpi rate set 500
+    Set {
+        /// Polling rate in Hz. One of 125, 250, 500, 1000.
+        hz: u32,
+    },
+}
+
+#[derive(Subcommand, Clone, Copy)]
+enum SensorModeAction {
+    /// Read the current sensor sampling mode.
+    Get,
+
+    /// Set the sensor sampling mode. Example: atk-dpi sensor-mode set competitive
+    Set {
+        #[arg(value_enum)]
+        mode: SensorModeArg,
+    },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum SensorModeArg {
+    /// Lower power, lower sampling frequency.
+    Base,
+    /// "АТК Шард" competitive firmware: higher scan rate/precision, more power use.
+    Competitive,
 }
 
 fn parse_hex_u16(s: &str) -> Result<u16, String> {
@@ -107,17 +157,27 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command_::List => list_devices(&api, cli.vid),
-        Command_::Get => {
+        Command_::Dpi { action } => {
             let device = connect(&api, &cli)?;
-            get_dpi(&device, cli.debug)
+            match action {
+                DpiAction::Get => get_dpi(&device, cli.debug),
+                DpiAction::Set { slot, value } => set_dpi(&device, slot, value, cli.debug),
+                DpiAction::Select { slot } => select_dpi(&device, slot, cli.debug),
+            }
         }
-        Command_::Set { slot, value } => {
+        Command_::Rate { action } => {
             let device = connect(&api, &cli)?;
-            set_dpi(&device, slot, value, cli.debug)
+            match action {
+                RateAction::Get => get_rate(&device, cli.debug),
+                RateAction::Set { hz } => set_rate(&device, hz, cli.debug),
+            }
         }
-        Command_::Select { slot } => {
+        Command_::SensorMode { action } => {
             let device = connect(&api, &cli)?;
-            select_dpi(&device, slot, cli.debug)
+            match action {
+                SensorModeAction::Get => get_sensor_mode(&device, cli.debug),
+                SensorModeAction::Set { mode } => set_sensor_mode(&device, mode, cli.debug),
+            }
         }
     }
 }
@@ -433,6 +493,112 @@ fn select_dpi(device: &Device, slot: u8, debug: bool) -> Result<()> {
     Ok(())
 }
 
+/// Converts a polling rate in Hz to the interval-in-milliseconds encoding
+/// used on the wire. Confirmed by real traffic: switching 1000->500->250->125
+/// produced interval bytes 2, 4, 8 respectively (1000/hz).
+fn interval_ms_from_hz(hz: u32) -> Result<u8> {
+    Ok(match hz {
+        1000 => 1,
+        500 => 2,
+        250 => 4,
+        125 => 8,
+        other => bail!("Unsupported polling rate: {other} Hz. Use 125, 250, 500 or 1000."),
+    })
+}
+
+fn hz_from_interval_ms(ms: u8) -> Result<u32> {
+    Ok(match ms {
+        1 => 1000,
+        2 => 500,
+        4 => 250,
+        8 => 125,
+        other => bail!("Unknown polling rate interval read from device: {other}ms"),
+    })
+}
+
+/// Reads the current polling rate. Format: EEPROMAddress::ReportRate (address
+/// 0x0000) holds a 10-byte block of 5 [value, checksum] pairs. Pair 0
+/// (offset 0-1) is the interval, in milliseconds, for the currently active
+/// connection mode. Pairs 1 and 2 are cached rates for the mouse's other
+/// connection modes (e.g. wired/Bluetooth) and must be preserved untouched
+/// on write — confirmed by real traffic: only pair 0 changed while cycling
+/// 1000->500->250->125 Hz.
+fn get_rate(device: &Device, debug: bool) -> Result<()> {
+    let data = read_eeprom(device, EEPROMAddress::ReportRate, 10, debug)?;
+    if data.is_empty() {
+        bail!("Expected polling rate data, got none");
+    }
+    let hz = hz_from_interval_ms(data[0])?;
+    println!("Polling rate: {hz} Hz");
+    Ok(())
+}
+
+/// Sets the polling rate for the currently active connection mode, leaving
+/// the cached rates for other connection modes (pairs 1 and 2) untouched —
+/// same read-modify-write approach as `set_dpi`/`select_dpi`.
+fn set_rate(device: &Device, hz: u32, debug: bool) -> Result<()> {
+    let interval_ms = interval_ms_from_hz(hz)?;
+
+    let mut data = read_eeprom(device, EEPROMAddress::ReportRate, 10, debug)?;
+    if data.len() < 2 {
+        bail!(
+            "Expected at least 2 bytes of data when reading the polling rate \
+             block before writing, got {}. Aborting to avoid losing other settings.",
+            data.len()
+        );
+    }
+
+    data[0] = interval_ms;
+    data[1] = 0x55u8.wrapping_sub(interval_ms);
+
+    write_eeprom(device, EEPROMAddress::ReportRate, &data, debug)?;
+
+    println!("Polling rate set to {hz} Hz.");
+    Ok(())
+}
+
+/// Reads the current sensor sampling mode. Format: EEPROMAddress::SensorEnable
+/// (address 0x00b5) holds a 6-byte block of 3 [value, checksum] pairs. Pair 2
+/// (offset 4-5) is the mode flag: 0 = base, 1 = competitive firmware. Pairs 0
+/// and 1 are unrelated settings at the same address and must be preserved —
+/// confirmed by real traffic: they stayed at (0, 6) in both captured states,
+/// only pair 2 flipped between 0 and 1.
+fn get_sensor_mode(device: &Device, debug: bool) -> Result<()> {
+    let data = read_eeprom(device, EEPROMAddress::SensorEnable, 6, debug)?;
+    if data.len() < 5 {
+        bail!("Expected sensor mode data, got only {} bytes", data.len());
+    }
+    let mode = if data[4] == 1 { "competitive" } else { "base" };
+    println!("Sensor mode: {mode}");
+    Ok(())
+}
+
+/// Sets the sensor sampling mode, leaving the unrelated pairs 0 and 1 at
+/// this address untouched — same read-modify-write approach as `set_rate`.
+fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<()> {
+    let value: u8 = match mode {
+        SensorModeArg::Base => 0,
+        SensorModeArg::Competitive => 1,
+    };
+
+    let mut data = read_eeprom(device, EEPROMAddress::SensorEnable, 6, debug)?;
+    if data.len() < 6 {
+        bail!(
+            "Expected 6 bytes of data when reading the sensor mode block \
+             before writing, got {}. Aborting to avoid losing other settings.",
+            data.len()
+        );
+    }
+
+    data[4] = value;
+    data[5] = 0x55u8.wrapping_sub(value);
+
+    write_eeprom(device, EEPROMAddress::SensorEnable, &data, debug)?;
+
+    println!("Sensor mode set to {mode:?}.");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,5 +640,25 @@ mod tests {
     #[test]
     fn test_rejects_non_multiple_of_50() {
         assert!(encode_dpi_block(1234).is_err());
+    }
+
+    #[test]
+    fn test_interval_ms_from_hz_confirmed_points() {
+        // Confirmed by real HID traffic: cycling 1000->500->250->125 Hz
+        // produced interval bytes 1(assumed baseline)/2/4/8.
+        assert_eq!(interval_ms_from_hz(1000).unwrap(), 1);
+        assert_eq!(interval_ms_from_hz(500).unwrap(), 2);
+        assert_eq!(interval_ms_from_hz(250).unwrap(), 4);
+        assert_eq!(interval_ms_from_hz(125).unwrap(), 8);
+        assert!(interval_ms_from_hz(4000).is_err());
+    }
+
+    #[test]
+    fn test_hz_from_interval_ms_roundtrip() {
+        for hz in [125, 250, 500, 1000] {
+            let ms = interval_ms_from_hz(hz).unwrap();
+            assert_eq!(hz_from_interval_ms(ms).unwrap(), hz);
+        }
+        assert!(hz_from_interval_ms(3).is_err());
     }
 }
