@@ -68,9 +68,8 @@ modes' remembered rates are never lost.
 3 `[value, checksum]` pairs. Pair 2 (offset 4-5) is the mode flag:
 
 ```
-0 = "Базовый режим" (base — lower power, lower sampling frequency)
-1 = "АТК Шард Компетитивная Прошивка" (competitive firmware — higher
-    scan rate/precision, more power use)
+0 = "Basic mode" (lower power, lower sampling frequency)
+1 = "ATK Shard Competitive Firmware" (higher scan rate/precision, more power use)
 ```
 
 Pairs 0 and 1 (offsets 0-1, 2-3) are unrelated settings living at the
