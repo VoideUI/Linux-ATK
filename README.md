@@ -1,10 +1,10 @@
 # Linux-ATK
 
-The modules `command.rs`, `device.rs`, `types.rs` are actual
-source files from the reverse-engineered ATK protocol, included directly.
-The only substantive change made to them is replacing `static` with
-`const` for a couple of constants, so they work as array lengths across a
-wider range of rustc versions.
+The ATK protocol layer (command format, `EEPROMAddress`, HID report
+handling) is provided by the [`libatk-rs`](https://crates.io/crates/libatk-rs)
+crate, used here as a regular dependency. The DPI-specific encoding
+formula (see below) was derived separately, by reverse-engineering real
+HID traffic — see Acknowledgements.
 
 ## DPI protocol
 
@@ -110,11 +110,12 @@ plus a full roundtrip across the entire value range.
 
 ## Acknowledgements
 
-The modules `command.rs`, `device.rs`, `types.rs` are source
-files from [libatk-rs](https://github.com/cyberphantom52/libatk-rs) by
-[cyberphantom52](https://github.com/cyberphantom52), distributed here
-under the same license (GPL-3.0, see `LICENSE`). That library provided
-the base structure of the ATK protocol (command format, `EEPROMAddress`,
-HID report handling) — without it this project would have started from
-zero. The DPI-specific encoding formula (see above) was derived
-separately, by reverse-engineering real HID traffic.
+This project is built on top of the [`libatk-rs`](https://github.com/cyberphantom52/libatk-rs)
+crate by [cyberphantom52](https://github.com/cyberphantom52), used here as
+a regular dependency (see `Cargo.toml`) rather than vendored code. That
+library provides the base structure of the ATK protocol (command format,
+`EEPROMAddress`, HID report handling) — without it this project would
+have started from zero. The DPI-specific encoding formula (see above)
+was derived separately, by reverse-engineering real HID traffic.
+Distributed under GPL-3.0 (see `LICENSE`), matching `libatk-rs`'s own
+license.
