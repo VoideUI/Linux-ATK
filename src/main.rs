@@ -180,6 +180,7 @@ enum MoveSyncAction {
     /// Set motion sync on or off. Example: atk-dpi move-sync set true
     Set {
         /// true to enable, false to disable.
+        #[arg(action = clap::ArgAction::Set)]
         enabled: bool,
     },
 }
