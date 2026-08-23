@@ -62,6 +62,38 @@ other pairs stayed constant. `rate set` therefore reads the whole
 10-byte block first and only overwrites pair 0, so the other connection
 modes' remembered rates are never lost.
 
+## LOD tolerance protocol
+ 
+`EEPROMAddress::SilentHeight` (address `0x0a`) holds a 2-byte block (1
+`[value, checksum]` pair). The value is the lift-off distance tolerance
+**in millimeters, stored directly**, no extra encoding:
+ 
+```
+value    = mm            (1 or 2)
+checksum = 0x55 - value
+```
+ 
+Confirmed by real traffic: switching to 2mm then back to 1mm produced
+value bytes 2 then 1.
+ 
+## Motion sync protocol
+ 
+Motion sync ("Синхронизация движения" in ATK HUB) lives at
+`EEPROMAddress::StabilizationTime` (address `0xa9`) — **not** the
+library's separate `EEPROMAddress::MotionSync` (`0xab`) constant; real
+HID traffic from toggling this UI setting went to `StabilizationTime`
+instead. It's a 10-byte block of 5 `[value, checksum]` pairs. Pair 1
+(offset 2-3) is the on/off flag:
+ 
+```
+0 = off
+1 = on
+```
+
+Pairs 0, 2, 3, 4 are unrelated settings living at the same address
+(observed values 15, 30, 0, 0) and are preserved untouched on write,
+same read-modify-write approach as the other toggles in this project.
+
 ## Sensor mode protocol
 
 `EEPROMAddress::SensorEnable` (address `0x00b5`) holds a 6-byte block of
@@ -98,7 +130,13 @@ to be set explicitly — without it the device replies with status=1
   sampling mode (base / competitive).
 - `Linux-ATK sensor-mode set base|competitive` — sets the sensor
   sampling mode.
-
+- `Linux-ATK lod get` — reads and prints the current LOD tolerance.
+- `Linux-ATK lod set MM` — sets the LOD tolerance, in millimeters.
+  `MM` must be 1 or 2 (just the number, no unit — `2`, not `2mm`).
+- `Linux-ATK move-sync get` — reads and prints whether motion sync is
+  enabled.
+- `Linux-ATK move-sync set true|false` — enables or disables motion
+  sync.
 VID/PID and the working HID interface (usage_page/usage) are detected
 automatically: the utility finds the device itself and tries known
 vendor-specific interfaces until one responds. Manually specifying
