@@ -178,6 +178,10 @@ Linux-ATK rate get
 Linux-ATK rate set 500
 Linux-ATK sensor-mode get
 Linux-ATK sensor-mode set competitive
+Linux-ATK lod get
+Linux-ATK lod set 2
+Linux-ATK move-sync get
+Linux-ATK move-sync set true
 ```
 
 If interface auto-detection fails (`Could not find a working HID
