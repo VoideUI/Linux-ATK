@@ -204,7 +204,9 @@ cargo test
 
 Verifies DPI and polling rate encoding/decoding against the
 traffic-confirmed data points, plus a full DPI roundtrip across the
-entire value range.
+entire value range. LOD tolerance and motion sync have no separate
+encoding formula to test (values are written directly) — see the
+protocol sections above.
 
 ## Acknowledgements
 
@@ -213,7 +215,7 @@ crate by [cyberphantom52](https://github.com/cyberphantom52), used here as
 a regular dependency (see `Cargo.toml`) rather than vendored code. That
 library provides the base structure of the ATK protocol (command format,
 `EEPROMAddress`, HID report handling) — without it this project would
-have started from zero. The DPI, polling rate and sensor mode encoding
-formulas (see above) were derived separately, by reverse-engineering
-real HID traffic. Distributed under GPL-3.0 (see `LICENSE`), matching
-`libatk-rs`'s own license.
+have started from zero. The DPI, polling rate, LOD tolerance and motion
+sync encoding formulas (see above) were derived separately, by
+reverse-engineering real HID traffic. Distributed under GPL-3.0 (see
+`LICENSE`), matching `libatk-rs`'s own license.
