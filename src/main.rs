@@ -1,11 +1,12 @@
+
 use libatk_rs::prelude::*;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use hidapi::HidApi;
-
+ 
 /// Known Vendor IDs for ATK/VXE devices.
 const ATK_VENDOR_IDS: [u16; 2] = [0x373b, 0x3554];
-
+ 
 /// Candidate (usage_page, usage) pairs for the vendor-specific interface
 /// the ATK protocol lives on. Order matters: ff02/2 is confirmed working
 /// on a real device (VXE NordicMouse 1K Dongle) and comes first; the rest
@@ -18,10 +19,10 @@ const INTERFACE_CANDIDATES: [(u16, u16); 5] = [
     (0xff05, 0x0000),
     (0xff00, 0x0001),
 ];
-
+ 
 /// DPI step, confirmed by traffic and stated by the manufacturer (100-30000, step 50).
 const DPI_STEP: u32 = 50;
-
+ 
 /// EEPROM addresses for the 4 DPI profile pairs, in order DPI1/2, DPI3/4, DPI5/6, DPI7/8.
 const DPI_PAIR_ADDRESSES: [EEPROMAddress; 4] = [
     EEPROMAddress::DpiPair1,
@@ -29,10 +30,10 @@ const DPI_PAIR_ADDRESSES: [EEPROMAddress; 4] = [
     EEPROMAddress::DpiPair5,
     EEPROMAddress::DpiPair7,
 ];
-
+ 
 struct EepromCommand;
 impl CommandDescriptor for EepromCommand {}
-
+ 
 #[derive(Parser)]
 #[command(
     name = "atk-dpi",
@@ -44,68 +45,80 @@ struct Cli {
     /// not needed — detected automatically.
     #[arg(long, value_parser = parse_hex_u16)]
     vid: Option<u16>,
-
+ 
     /// Explicitly specify the device Product ID in hex (e.g. f58a). Usually
     /// not needed — detected automatically.
     #[arg(long, value_parser = parse_hex_u16)]
     pid: Option<u16>,
-
+ 
     /// HID interface usage page. Usually not needed — the utility tries
     /// known candidates itself and finds a working one. Set explicitly
     /// only if auto-detection failed (see `atk-dpi list` for actual values).
     #[arg(long, value_parser = parse_hex_u16)]
     usage_page: Option<u16>,
-
+ 
     /// HID interface usage (see usage-page above).
     #[arg(long, value_parser = parse_hex_u16)]
     usage: Option<u16>,
-
+ 
     /// Print the raw bytes of every HID request and response (for debugging).
     #[arg(long)]
     debug: bool,
-
+ 
     #[command(subcommand)]
     command: Command_,
 }
-
+ 
 #[derive(Subcommand)]
 enum Command_ {
     /// List all connected ATK/VXE HID devices.
     List,
-
+ 
     /// Manage DPI profiles (8 slots).
     Dpi {
         #[command(subcommand)]
         action: DpiAction,
     },
-
+ 
     /// Manage the HID polling (report) rate.
     Rate {
         #[command(subcommand)]
         action: RateAction,
     },
-
+ 
     /// Manage the sensor sampling mode (base / competitive firmware).
     SensorMode {
         #[command(subcommand)]
         action: SensorModeAction,
     },
+ 
+    /// Manage LOD (lift-off distance) tolerance.
+    Lod {
+        #[command(subcommand)]
+        action: LodAction,
+    },
+ 
+    /// Manage motion sync (called "Синхронизация движения" in ATK HUB).
+    MoveSync {
+        #[command(subcommand)]
+        action: MoveSyncAction,
+    },
 }
-
+ 
 #[derive(Subcommand, Clone, Copy)]
 enum DpiAction {
     /// Read all 8 DPI profiles from the mouse.
     Get,
-
+ 
     /// Set DPI for one of the 8 profiles. Example: atk-dpi dpi set 5 3500
     Set {
         /// Profile number, 1-8 (corresponds to DPI1..DPI8 in ATK HUB).
         slot: u8,
-
+ 
         /// DPI value, a multiple of 50, in the range 100-30000.
         value: u32,
     },
-
+ 
     /// Switch the active DPI profile (does not change the value, only
     /// selects one of the already configured 8 profiles). Example:
     /// atk-dpi dpi select 5
@@ -114,31 +127,31 @@ enum DpiAction {
         slot: u8,
     },
 }
-
+ 
 #[derive(Subcommand, Clone, Copy)]
 enum RateAction {
     /// Read the current polling rate.
     Get,
-
+ 
     /// Set the polling rate. Example: atk-dpi rate set 500
     Set {
         /// Polling rate in Hz. One of 125, 250, 500, 1000.
         hz: u32,
     },
 }
-
+ 
 #[derive(Subcommand, Clone, Copy)]
 enum SensorModeAction {
     /// Read the current sensor sampling mode.
     Get,
-
+ 
     /// Set the sensor sampling mode. Example: atk-dpi sensor-mode set competitive
     Set {
         #[arg(value_enum)]
         mode: SensorModeArg,
     },
 }
-
+ 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 enum SensorModeArg {
     /// Lower power, lower sampling frequency.
@@ -146,15 +159,39 @@ enum SensorModeArg {
     /// "АТК Шард" competitive firmware: higher scan rate/precision, more power use.
     Competitive,
 }
-
+ 
+#[derive(Subcommand, Clone, Copy)]
+enum LodAction {
+    /// Read the current LOD (lift-off distance) tolerance.
+    Get,
+ 
+    /// Set the LOD tolerance. Example: atk-dpi lod set 2
+    Set {
+        /// LOD tolerance in mm. One of 1, 2.
+        mm: u8,
+    },
+}
+ 
+#[derive(Subcommand, Clone, Copy)]
+enum MoveSyncAction {
+    /// Read whether motion sync is currently enabled.
+    Get,
+ 
+    /// Set motion sync on or off. Example: atk-dpi move-sync set true
+    Set {
+        /// true to enable, false to disable.
+        enabled: bool,
+    },
+}
+ 
 fn parse_hex_u16(s: &str) -> Result<u16, String> {
     u16::from_str_radix(s.trim_start_matches("0x"), 16).map_err(|e| e.to_string())
 }
-
+ 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let api = HidApi::new().context("failed to initialize HID API")?;
-
+ 
     match cli.command {
         Command_::List => list_devices(&api, cli.vid),
         Command_::Dpi { action } => {
@@ -179,22 +216,36 @@ fn main() -> Result<()> {
                 SensorModeAction::Set { mode } => set_sensor_mode(&device, mode, cli.debug),
             }
         }
+        Command_::Lod { action } => {
+            let device = connect(&api, &cli)?;
+            match action {
+                LodAction::Get => get_lod(&device, cli.debug),
+                LodAction::Set { mm } => set_lod(&device, mm, cli.debug),
+            }
+        }
+        Command_::MoveSync { action } => {
+            let device = connect(&api, &cli)?;
+            match action {
+                MoveSyncAction::Get => get_move_sync(&device, cli.debug),
+                MoveSyncAction::Set { enabled } => set_move_sync(&device, enabled, cli.debug),
+            }
+        }
     }
 }
-
+ 
 /// Finds the device and opens a working HID interface: if usage_page/usage
 /// are given explicitly, uses them; otherwise tries known candidates and
 /// probes each with a read until one responds.
 fn connect(api: &HidApi, cli: &Cli) -> Result<Device> {
     let (vid, pid) = resolve_ids(api, cli.vid, cli.pid)?;
-
+ 
     if let (Some(usage_page), Some(usage)) = (cli.usage_page, cli.usage) {
         return open_device(vid, pid, usage_page, usage);
     }
-
+ 
     autodetect_interface(vid, pid, cli.debug)
 }
-
+ 
 fn list_devices(api: &HidApi, vid_filter: Option<u16>) -> Result<()> {
     let mut found = false;
     for dev in api.device_list() {
@@ -230,7 +281,7 @@ fn list_devices(api: &HidApi, vid_filter: Option<u16>) -> Result<()> {
     }
     Ok(())
 }
-
+ 
 fn resolve_ids(api: &HidApi, vid: Option<u16>, pid: Option<u16>) -> Result<(u16, u16)> {
     if let (Some(v), Some(p)) = (vid, pid) {
         return Ok((v, p));
@@ -249,7 +300,7 @@ fn resolve_ids(api: &HidApi, vid: Option<u16>, pid: Option<u16>) -> Result<(u16,
          Run `atk-dpi list`, find your mouse and pass --vid/--pid explicitly."
     )
 }
-
+ 
 fn open_device(vid: u16, pid: u16, usage_page: u16, usage: u16) -> Result<Device> {
     Device::new(vid, pid, usage_page, usage).map_err(|e| {
         anyhow::anyhow!(
@@ -260,7 +311,7 @@ fn open_device(vid: u16, pid: u16, usage_page: u16, usage: u16) -> Result<Device
         )
     })
 }
-
+ 
 /// Tries known (usage_page, usage) candidates for a device with the given
 /// VID/PID, probing each with a harmless read (ReportRate address, 10
 /// bytes) — the first one that replies with status=0 is considered the
@@ -292,7 +343,7 @@ fn autodetect_interface(vid: u16, pid: u16, debug: bool) -> Result<Device> {
          it explicitly via --usage-page/--usage."
     )
 }
-
+ 
 /// Encodes a DPI value into a 4-byte block for a single profile.
 ///
 /// The formula has been confirmed against real HID traffic at 8
@@ -318,7 +369,7 @@ fn encode_dpi_block(dpi: u32) -> Result<[u8; 4]> {
         .wrapping_sub(byte2);
     Ok([idx_lo, idx_lo, byte2, checksum])
 }
-
+ 
 /// Decodes a 4-byte block back into a DPI value.
 fn decode_dpi_block(block: &[u8]) -> u32 {
     let idx_lo = block[0] as u32;
@@ -329,7 +380,7 @@ fn decode_dpi_block(block: &[u8]) -> u32 {
     let idx = (idx_hi << 8) | idx_lo;
     (idx + 1) * DPI_STEP
 }
-
+ 
 fn read_eeprom(
     device: &Device,
     address: EEPROMAddress,
@@ -347,15 +398,15 @@ fn read_eeprom(
     // GetEEPROM requests also always specified a concrete length (e.g. 8
     // for Key addresses).
     cmd.set_data_len(expected_len)?;
-
+ 
     if debug {
         eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
     }
-
+ 
     let response = cmd
         .execute(device)
         .map_err(|e| anyhow::anyhow!("error reading EEPROM {address:?}: {e}"))?;
-
+ 
     if debug {
         eprintln!("[debug] response: {:02x?}", response.as_bytes());
         eprintln!(
@@ -367,36 +418,36 @@ fn read_eeprom(
             response.data()
         );
     }
-
+ 
     if response.status() != 0 {
         bail!(
             "device returned an error while reading EEPROM {address:?}: status={}",
             response.status()
         );
     }
-
+ 
     Ok(response.data()[..response.data_len()].to_vec())
 }
-
+ 
 fn write_eeprom(device: &Device, address: EEPROMAddress, data: &[u8], debug: bool) -> Result<()> {
     let mut cmd = Command::<EepromCommand>::default();
     cmd.set_id(CommandId::SetEEPROM);
     cmd.set_eeprom_address(address);
     cmd.set_data_len(data.len())?;
     cmd.set_data(data, 0)?;
-
+ 
     if debug {
         eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
     }
-
+ 
     let response = cmd
         .execute(device)
         .map_err(|e| anyhow::anyhow!("error writing EEPROM {address:?}: {e}"))?;
-
+ 
     if debug {
         eprintln!("[debug] response: {:02x?}", response.as_bytes());
     }
-
+ 
     if response.status() != 0 {
         bail!(
             "device returned an error while writing EEPROM {address:?}: status={}",
@@ -405,7 +456,7 @@ fn write_eeprom(device: &Device, address: EEPROMAddress, data: &[u8], debug: boo
     }
     Ok(())
 }
-
+ 
 /// Reads all 8 DPI profiles from the mouse.
 fn get_dpi(device: &Device, debug: bool) -> Result<()> {
     for (pair_idx, &addr) in DPI_PAIR_ADDRESSES.iter().enumerate() {
@@ -426,7 +477,7 @@ fn get_dpi(device: &Device, debug: bool) -> Result<()> {
     }
     Ok(())
 }
-
+ 
 /// Sets DPI for a single profile (1-8), leaving the other 7 profiles
 /// untouched — first reads the whole pair containing the target slot,
 /// changes only one 4-byte block, and sends the pair back in full.
@@ -434,11 +485,11 @@ fn set_dpi(device: &Device, slot: u8, value: u32, debug: bool) -> Result<()> {
     if !(1..=8).contains(&slot) {
         bail!("Profile number must be between 1 and 8, got {slot}");
     }
-
+ 
     let pair_index = (slot - 1) / 2; // 0..=3, which of the 4 pairs
     let is_second_in_pair = (slot - 1) % 2 == 1; // first or second profile of the pair
     let addr = DPI_PAIR_ADDRESSES[pair_index as usize];
-
+ 
     let mut data = read_eeprom(device, addr, 8, debug)?;
     if data.len() < 8 {
         bail!(
@@ -447,17 +498,17 @@ fn set_dpi(device: &Device, slot: u8, value: u32, debug: bool) -> Result<()> {
             data.len()
         );
     }
-
+ 
     let new_block = encode_dpi_block(value)?;
     let offset = if is_second_in_pair { 4 } else { 0 };
     data[offset..offset + 4].copy_from_slice(&new_block);
-
+ 
     write_eeprom(device, addr, &data, debug)?;
-
+ 
     println!("DPI{slot} set to {value} dpi.");
     Ok(())
 }
-
+ 
 /// Switches the active DPI profile. Format: EEPROMAddress::ReportRate
 /// (address 0x0000) holds a 10-byte block: [ReportRate, ReportRateCrc,
 /// MaxDpi, MaxDpiCrc, CurrentDpi, CurrentDpiCrc, ...]. The byte at offset
@@ -473,7 +524,7 @@ fn select_dpi(device: &Device, slot: u8, debug: bool) -> Result<()> {
     if !(1..=8).contains(&slot) {
         bail!("Profile number must be between 1 and 8, got {slot}");
     }
-
+ 
     let mut data = read_eeprom(device, EEPROMAddress::ReportRate, 10, debug)?;
     if data.len() < 6 {
         bail!(
@@ -482,17 +533,17 @@ fn select_dpi(device: &Device, slot: u8, debug: bool) -> Result<()> {
             data.len()
         );
     }
-
+ 
     let idx = slot - 1;
     data[4] = idx;
     data[5] = 0x55u8.wrapping_sub(idx);
-
+ 
     write_eeprom(device, EEPROMAddress::ReportRate, &data, debug)?;
-
+ 
     println!("Active profile switched to DPI{slot}.");
     Ok(())
 }
-
+ 
 /// Converts a polling rate in Hz to the interval-in-milliseconds encoding
 /// used on the wire. Confirmed by real traffic: switching 1000->500->250->125
 /// produced interval bytes 2, 4, 8 respectively (1000/hz).
@@ -505,7 +556,7 @@ fn interval_ms_from_hz(hz: u32) -> Result<u8> {
         other => bail!("Unsupported polling rate: {other} Hz. Use 125, 250, 500 or 1000."),
     })
 }
-
+ 
 fn hz_from_interval_ms(ms: u8) -> Result<u32> {
     Ok(match ms {
         1 => 1000,
@@ -515,7 +566,7 @@ fn hz_from_interval_ms(ms: u8) -> Result<u32> {
         other => bail!("Unknown polling rate interval read from device: {other}ms"),
     })
 }
-
+ 
 /// Reads the current polling rate. Format: EEPROMAddress::ReportRate (address
 /// 0x0000) holds a 10-byte block of 5 [value, checksum] pairs. Pair 0
 /// (offset 0-1) is the interval, in milliseconds, for the currently active
@@ -532,13 +583,13 @@ fn get_rate(device: &Device, debug: bool) -> Result<()> {
     println!("Polling rate: {hz} Hz");
     Ok(())
 }
-
+ 
 /// Sets the polling rate for the currently active connection mode, leaving
 /// the cached rates for other connection modes (pairs 1 and 2) untouched —
 /// same read-modify-write approach as `set_dpi`/`select_dpi`.
 fn set_rate(device: &Device, hz: u32, debug: bool) -> Result<()> {
     let interval_ms = interval_ms_from_hz(hz)?;
-
+ 
     let mut data = read_eeprom(device, EEPROMAddress::ReportRate, 10, debug)?;
     if data.len() < 2 {
         bail!(
@@ -547,16 +598,16 @@ fn set_rate(device: &Device, hz: u32, debug: bool) -> Result<()> {
             data.len()
         );
     }
-
+ 
     data[0] = interval_ms;
     data[1] = 0x55u8.wrapping_sub(interval_ms);
-
+ 
     write_eeprom(device, EEPROMAddress::ReportRate, &data, debug)?;
-
+ 
     println!("Polling rate set to {hz} Hz.");
     Ok(())
 }
-
+ 
 /// Reads the current sensor sampling mode. Format: EEPROMAddress::SensorEnable
 /// (address 0x00b5) holds a 6-byte block of 3 [value, checksum] pairs. Pair 2
 /// (offset 4-5) is the mode flag: 0 = base, 1 = competitive firmware. Pairs 0
@@ -572,7 +623,7 @@ fn get_sensor_mode(device: &Device, debug: bool) -> Result<()> {
     println!("Sensor mode: {mode}");
     Ok(())
 }
-
+ 
 /// Sets the sensor sampling mode, leaving the unrelated pairs 0 and 1 at
 /// this address untouched — same read-modify-write approach as `set_rate`.
 fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<()> {
@@ -580,7 +631,7 @@ fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<
         SensorModeArg::Base => 0,
         SensorModeArg::Competitive => 1,
     };
-
+ 
     let mut data = read_eeprom(device, EEPROMAddress::SensorEnable, 6, debug)?;
     if data.len() < 6 {
         bail!(
@@ -589,20 +640,103 @@ fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<
             data.len()
         );
     }
-
+ 
     data[4] = value;
     data[5] = 0x55u8.wrapping_sub(value);
-
+ 
     write_eeprom(device, EEPROMAddress::SensorEnable, &data, debug)?;
-
+ 
     println!("Sensor mode set to {mode:?}.");
     Ok(())
 }
-
+ 
+/// Reads the current LOD (lift-off distance) tolerance. Format:
+/// EEPROMAddress::SilentHeight (address 0x0a) holds a 2-byte block (1
+/// [value, checksum] pair). The value is the tolerance in millimeters,
+/// stored directly with no extra encoding — confirmed by real traffic:
+/// switching 2mm then back to 1mm produced value bytes 2 then 1.
+fn get_lod(device: &Device, debug: bool) -> Result<()> {
+    let data = read_eeprom(device, EEPROMAddress::SilentHeight, 2, debug)?;
+    if data.is_empty() {
+        bail!("Expected LOD tolerance data, got none");
+    }
+    println!("LOD tolerance: {}mm", data[0]);
+    Ok(())
+}
+ 
+/// Sets the LOD tolerance, in millimeters.
+fn set_lod(device: &Device, mm: u8, debug: bool) -> Result<()> {
+    if mm != 1 && mm != 2 {
+        bail!("Unsupported LOD tolerance: {mm}mm. Use 1 or 2.");
+    }
+ 
+    let mut data = read_eeprom(device, EEPROMAddress::SilentHeight, 2, debug)?;
+    if data.len() < 2 {
+        bail!(
+            "Expected 2 bytes of data when reading the LOD tolerance block \
+             before writing, got {}. Aborting to avoid losing other settings.",
+            data.len()
+        );
+    }
+ 
+    data[0] = mm;
+    data[1] = 0x55u8.wrapping_sub(mm);
+ 
+    write_eeprom(device, EEPROMAddress::SilentHeight, &data, debug)?;
+ 
+    println!("LOD tolerance set to {mm}mm.");
+    Ok(())
+}
+ 
+/// Reads whether motion sync ("Синхронизация движения" in ATK HUB) is
+/// currently enabled. Format: EEPROMAddress::StabilizationTime (address
+/// 0xa9) holds a 10-byte block of 5 [value, checksum] pairs. Pair 1
+/// (offset 2-3) is the on/off flag: 0 = off, 1 = on. Pairs 0, 2, 3, 4 are
+/// unrelated settings at the same address and must be preserved on write
+/// — confirmed by real traffic: only pair 1 changed while toggling off
+/// then back on, the rest stayed at their captured values.
+///
+/// Note: despite the name, this is NOT the library's separate
+/// `EEPROMAddress::MotionSync` (0xab) constant — the real HID traffic
+/// from toggling this UI setting went to `StabilizationTime` (0xa9)
+/// instead.
+fn get_move_sync(device: &Device, debug: bool) -> Result<()> {
+    let data = read_eeprom(device, EEPROMAddress::StabilizationTime, 10, debug)?;
+    if data.len() < 4 {
+        bail!("Expected motion sync data, got only {} bytes", data.len());
+    }
+    println!("Motion sync: {}", data[2] == 1);
+    Ok(())
+}
+ 
+/// Sets motion sync on or off, leaving the unrelated pairs 0, 2, 3, 4 at
+/// this address untouched — same read-modify-write approach as the other
+/// toggles in this file.
+fn set_move_sync(device: &Device, enabled: bool, debug: bool) -> Result<()> {
+    let value: u8 = if enabled { 1 } else { 0 };
+ 
+    let mut data = read_eeprom(device, EEPROMAddress::StabilizationTime, 10, debug)?;
+    if data.len() < 4 {
+        bail!(
+            "Expected at least 4 bytes of data when reading the motion sync \
+             block before writing, got {}. Aborting to avoid losing other settings.",
+            data.len()
+        );
+    }
+ 
+    data[2] = value;
+    data[3] = 0x55u8.wrapping_sub(value);
+ 
+    write_eeprom(device, EEPROMAddress::StabilizationTime, &data, debug)?;
+ 
+    println!("Motion sync set to {enabled}.");
+    Ok(())
+}
+ 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+ 
     #[test]
     fn test_encode_confirmed_points() {
         // Points confirmed via real HID traffic (see comment at the top of the file).
@@ -616,7 +750,7 @@ mod tests {
         assert_eq!(encode_dpi_block(20000).unwrap(), [0x8f, 0x8f, 0x44, 0xf3]);
         assert_eq!(encode_dpi_block(30000).unwrap(), [0x57, 0x57, 0x88, 0x1f]);
     }
-
+ 
     #[test]
     fn test_decode_confirmed_points() {
         assert_eq!(decode_dpi_block(&[0x17, 0x17, 0x00, 0x27]), 1200);
@@ -628,7 +762,7 @@ mod tests {
         assert_eq!(decode_dpi_block(&[0x8f, 0x8f, 0x44, 0xf3]), 20000);
         assert_eq!(decode_dpi_block(&[0x57, 0x57, 0x88, 0x1f]), 30000);
     }
-
+ 
     #[test]
     fn test_roundtrip() {
         for dpi in (100..=30000u32).step_by(50) {
@@ -636,12 +770,12 @@ mod tests {
             assert_eq!(decode_dpi_block(&block), dpi, "roundtrip failed for {dpi}");
         }
     }
-
+ 
     #[test]
     fn test_rejects_non_multiple_of_50() {
         assert!(encode_dpi_block(1234).is_err());
     }
-
+ 
     #[test]
     fn test_interval_ms_from_hz_confirmed_points() {
         // Confirmed by real HID traffic: cycling 1000->500->250->125 Hz
@@ -652,7 +786,7 @@ mod tests {
         assert_eq!(interval_ms_from_hz(125).unwrap(), 8);
         assert!(interval_ms_from_hz(4000).is_err());
     }
-
+ 
     #[test]
     fn test_hz_from_interval_ms_roundtrip() {
         for hz in [125, 250, 500, 1000] {
