@@ -1,4 +1,3 @@
-
 use libatk_rs::prelude::*;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -33,6 +32,34 @@ const DPI_PAIR_ADDRESSES: [EEPROMAddress; 4] = [
  
 struct EepromCommand;
 impl CommandDescriptor for EepromCommand {}
+ 
+/// Battery status command, as documented by libatk-rs itself
+/// (base_offset=0x5, report_id=0x8, cmd_len=0x10 — same as GetBatteryStatus
+/// example in the libatk-rs README/crates.io page).
+#[derive(CommandDescriptor)]
+#[command_descriptor(base_offset = 0x5, report_id = 0x8, cmd_len = 0x10)]
+struct GetBatteryStatus;
+ 
+impl Command<GetBatteryStatus> {
+    /// Builds a query for the current battery status.
+    pub fn query() -> Command<GetBatteryStatus> {
+        let mut command = Command::default();
+        command.set_id(CommandId::GetBatteryLevel);
+        command
+    }
+ 
+    /// Battery level, as a percentage (0-100).
+    pub fn level(&self) -> u8 {
+        self.data()[0x0]
+    }
+ 
+    /// Charging status byte. Not independently confirmed against real
+    /// traffic (unlike DPI/rate/etc. in this project) — taken from the
+    /// libatk-rs documentation as-is: 0 = not charging, nonzero = charging.
+    pub fn charge(&self) -> u8 {
+        self.data()[0x1]
+    }
+}
  
 #[derive(Parser)]
 #[command(
@@ -102,6 +129,12 @@ enum Command_ {
     MoveSync {
         #[command(subcommand)]
         action: MoveSyncAction,
+    },
+ 
+    /// Read the mouse's battery status.
+    Battery {
+        #[command(subcommand)]
+        action: BatteryAction,
     },
 }
  
@@ -185,6 +218,13 @@ enum MoveSyncAction {
     },
 }
  
+/// Actions for `atk-dpi battery`.
+#[derive(Subcommand, Clone, Copy)]
+enum BatteryAction {
+    /// Read current battery percentage and charging status.
+    Get,
+}
+ 
 fn parse_hex_u16(s: &str) -> Result<u16, String> {
     u16::from_str_radix(s.trim_start_matches("0x"), 16).map_err(|e| e.to_string())
 }
@@ -229,6 +269,12 @@ fn main() -> Result<()> {
             match action {
                 MoveSyncAction::Get => get_move_sync(&device, cli.debug),
                 MoveSyncAction::Set { enabled } => set_move_sync(&device, enabled, cli.debug),
+            }
+        }
+        Command_::Battery { action } => {
+            let device = connect(&api, &cli)?;
+            match action {
+                BatteryAction::Get => get_battery(&device, cli.debug),
             }
         }
     }
@@ -731,6 +777,31 @@ fn set_move_sync(device: &Device, enabled: bool, debug: bool) -> Result<()> {
     write_eeprom(device, EEPROMAddress::StabilizationTime, &data, debug)?;
  
     println!("Motion sync set to {enabled}.");
+    Ok(())
+}
+ 
+/// Reads and prints battery percentage and charging status, using the
+/// `GetBatteryStatus` command exactly as documented by libatk-rs.
+fn get_battery(device: &Device, debug: bool) -> Result<()> {
+    let cmd = Command::<GetBatteryStatus>::query();
+ 
+    if debug {
+        eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
+    }
+ 
+    let response = cmd
+        .execute(device)
+        .map_err(|e| anyhow::anyhow!("error reading battery status: {e}"))?;
+ 
+    if debug {
+        eprintln!("[debug] response: {:02x?}", response.as_bytes());
+    }
+ 
+    let level = response.level();
+    let charging = response.charge() != 0;
+ 
+    println!("Battery level: {level}%");
+    println!("Charging: {}", if charging { "yes" } else { "no" });
     Ok(())
 }
  
