@@ -774,10 +774,11 @@ fn get_battery(device: &Device, debug: bool) -> Result<()> {
     let mut cmd = Command::<BatteryCommand>::default();
     cmd.set_id(CommandId::GetBatteryLevel);
     // Same requirement discovered for GetEEPROM: the device needs an
-    // explicit expected data length in the request, or it may reply with
-    // a truncated/empty payload. Using the standard 10-byte data field
-    // size (same as e.g. ReportRate) as a conservative default.
-    cmd.set_data_len(10)?;
+    // explicit expected data length in the request, or the reply may be
+    // unreliable. The exact correct length for this command is still
+    // being determined empirically — battery only needs 2 meaningful
+    // bytes (level, charge), so trying that first.
+    cmd.set_data_len(2)?;
  
     if debug {
         eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
