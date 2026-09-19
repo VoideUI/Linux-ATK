@@ -33,33 +33,17 @@ const DPI_PAIR_ADDRESSES: [EEPROMAddress; 4] = [
 struct EepromCommand;
 impl CommandDescriptor for EepromCommand {}
  
-/// Battery status command, as documented by libatk-rs itself
-/// (base_offset=0x5, report_id=0x8, cmd_len=0x10 — same as GetBatteryStatus
-/// example in the libatk-rs README/crates.io page).
-#[derive(CommandDescriptor)]
-#[command_descriptor(base_offset = 0x5, report_id = 0x8, cmd_len = 0x10)]
-struct GetBatteryStatus;
- 
-impl Command<GetBatteryStatus> {
-    /// Builds a query for the current battery status.
-    pub fn query() -> Command<GetBatteryStatus> {
-        let mut command = Command::default();
-        command.set_id(CommandId::GetBatteryLevel);
-        command
-    }
- 
-    /// Battery level, as a percentage (0-100).
-    pub fn level(&self) -> u8 {
-        self.data()[0x0]
-    }
- 
-    /// Charging status byte. Not independently confirmed against real
-    /// traffic (unlike DPI/rate/etc. in this project) — taken from the
-    /// libatk-rs documentation as-is: 0 = not charging, nonzero = charging.
-    pub fn charge(&self) -> u8 {
-        self.data()[0x1]
-    }
-}
+/// Marker type for the battery status command, same pattern as
+/// `EepromCommand` above — `CommandDescriptor` is just a marker trait,
+/// so no special derive or data is needed. (An earlier version of this
+/// file tried to copy a derive-macro shortcut shown in the libatk-rs
+/// README/crates.io page, but that macro does not actually exist in the
+/// published 0.1.10 crate, and adding inherent methods directly to the
+/// library's own `Command<T>` type is not allowed by Rust's orphan rules
+/// regardless — fixed by using the same free-function style as the rest
+/// of this file instead.)
+struct BatteryCommand;
+impl CommandDescriptor for BatteryCommand {}
  
 #[derive(Parser)]
 #[command(
@@ -780,10 +764,20 @@ fn set_move_sync(device: &Device, enabled: bool, debug: bool) -> Result<()> {
     Ok(())
 }
  
-/// Reads and prints battery percentage and charging status, using the
-/// `GetBatteryStatus` command exactly as documented by libatk-rs.
+/// Reads and prints battery percentage and charging status. Uses the
+/// same command-building style as `read_eeprom`/`write_eeprom` — battery
+/// level and charging status are taken from the libatk-rs documentation
+/// (data byte 0 = level percentage, byte 1 = charging flag), not
+/// independently confirmed against real traffic the way DPI/rate/etc.
+/// are elsewhere in this file.
 fn get_battery(device: &Device, debug: bool) -> Result<()> {
-    let cmd = Command::<GetBatteryStatus>::query();
+    let mut cmd = Command::<BatteryCommand>::default();
+    cmd.set_id(CommandId::GetBatteryLevel);
+    // Same requirement discovered for GetEEPROM: the device needs an
+    // explicit expected data length in the request, or it may reply with
+    // a truncated/empty payload. Using the standard 10-byte data field
+    // size (same as e.g. ReportRate) as a conservative default.
+    cmd.set_data_len(10)?;
  
     if debug {
         eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
@@ -797,8 +791,20 @@ fn get_battery(device: &Device, debug: bool) -> Result<()> {
         eprintln!("[debug] response: {:02x?}", response.as_bytes());
     }
  
-    let level = response.level();
-    let charging = response.charge() != 0;
+    if response.status() != 0 {
+        bail!(
+            "device returned an error while reading battery status: status={}",
+            response.status()
+        );
+    }
+ 
+    let data = response.data();
+    if data.len() < 2 {
+        bail!("Expected battery status data, got only {} bytes", data.len());
+    }
+ 
+    let level = data[0];
+    let charging = data[1] != 0;
  
     println!("Battery level: {level}%");
     println!("Charging: {}", if charging { "yes" } else { "no" });
