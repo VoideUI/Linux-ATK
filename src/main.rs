@@ -770,46 +770,64 @@ fn set_move_sync(device: &Device, enabled: bool, debug: bool) -> Result<()> {
 /// (data byte 0 = level percentage, byte 1 = charging flag), not
 /// independently confirmed against real traffic the way DPI/rate/etc.
 /// are elsewhere in this file.
+///
+/// Unlike GetEEPROM, this command does NOT want an explicit `data_len` on
+/// the request — confirmed empirically: setting it (tried both 2 and 10)
+/// made the device reply with status=1 (error) on every attempt, while
+/// leaving it at the command's own default is what the device actually
+/// expects. The wireless dongle is occasionally flaky regardless (as
+/// seen with other commands over the same 2.4G connection), so this
+/// retries a few times before giving up.
 fn get_battery(device: &Device, debug: bool) -> Result<()> {
-    let mut cmd = Command::<BatteryCommand>::default();
-    cmd.set_id(CommandId::GetBatteryLevel);
-    // Same requirement discovered for GetEEPROM: the device needs an
-    // explicit expected data length in the request, or the reply may be
-    // unreliable. The exact correct length for this command is still
-    // being determined empirically — battery only needs 2 meaningful
-    // bytes (level, charge), so trying that first.
-    cmd.set_data_len(2)?;
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut last_err = None;
  
-    if debug {
-        eprintln!("[debug] request:  {:02x?}", cmd.as_bytes());
+    for attempt in 1..=MAX_ATTEMPTS {
+        let mut cmd = Command::<BatteryCommand>::default();
+        cmd.set_id(CommandId::GetBatteryLevel);
+ 
+        if debug {
+            eprintln!("[debug] request (attempt {attempt}/{MAX_ATTEMPTS}): {:02x?}", cmd.as_bytes());
+        }
+ 
+        let outcome = cmd
+            .execute(device)
+            .map_err(|e| anyhow::anyhow!("error reading battery status: {e}"))
+            .and_then(|response| {
+                if debug {
+                    eprintln!("[debug] response: {:02x?}", response.as_bytes());
+                }
+                if response.status() != 0 {
+                    bail!(
+                        "device returned an error while reading battery status: status={}",
+                        response.status()
+                    );
+                }
+                let data = response.data().to_vec();
+                if data.len() < 2 {
+                    bail!("Expected battery status data, got only {} bytes", data.len());
+                }
+                Ok(data)
+            });
+ 
+        match outcome {
+            Ok(data) => {
+                let level = data[0];
+                let charging = data[1] != 0;
+                println!("Battery level: {level}%");
+                println!("Charging: {}", if charging { "yes" } else { "no" });
+                return Ok(());
+            }
+            Err(e) => {
+                if debug {
+                    eprintln!("[debug] attempt {attempt} failed: {e}");
+                }
+                last_err = Some(e);
+            }
+        }
     }
  
-    let response = cmd
-        .execute(device)
-        .map_err(|e| anyhow::anyhow!("error reading battery status: {e}"))?;
- 
-    if debug {
-        eprintln!("[debug] response: {:02x?}", response.as_bytes());
-    }
- 
-    if response.status() != 0 {
-        bail!(
-            "device returned an error while reading battery status: status={}",
-            response.status()
-        );
-    }
- 
-    let data = response.data();
-    if data.len() < 2 {
-        bail!("Expected battery status data, got only {} bytes", data.len());
-    }
- 
-    let level = data[0];
-    let charging = data[1] != 0;
- 
-    println!("Battery level: {level}%");
-    println!("Charging: {}", if charging { "yes" } else { "no" });
-    Ok(())
+    Err(last_err.unwrap())
 }
  
 #[cfg(test)]
