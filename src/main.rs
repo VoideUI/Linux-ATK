@@ -47,7 +47,7 @@ impl CommandDescriptor for BatteryCommand {}
  
 #[derive(Parser)]
 #[command(
-    name = "atk-dpi",
+    name = "Linux-ATK",
     version,
     about = "Manage DPI on ATK/VXE mice over HID"
 )]
@@ -64,7 +64,7 @@ struct Cli {
  
     /// HID interface usage page. Usually not needed — the utility tries
     /// known candidates itself and finds a working one. Set explicitly
-    /// only if auto-detection failed (see `atk-dpi list` for actual values).
+    /// only if auto-detection failed (see `Linux-ATK list` for actual values).
     #[arg(long, value_parser = parse_hex_u16)]
     usage_page: Option<u16>,
  
@@ -127,7 +127,7 @@ enum DpiAction {
     /// Read all 8 DPI profiles from the mouse.
     Get,
  
-    /// Set DPI for one of the 8 profiles. Example: atk-dpi dpi set 5 3500
+    /// Set DPI for one of the 8 profiles. Example: Linux-ATK dpi set 5 3500
     Set {
         /// Profile number, 1-8 (corresponds to DPI1..DPI8 in ATK HUB).
         slot: u8,
@@ -138,7 +138,7 @@ enum DpiAction {
  
     /// Switch the active DPI profile (does not change the value, only
     /// selects one of the already configured 8 profiles). Example:
-    /// atk-dpi dpi select 5
+    /// Linux-ATK dpi select 5
     Select {
         /// Profile number, 1-8 (corresponds to DPI1..DPI8 in ATK HUB).
         slot: u8,
@@ -150,7 +150,7 @@ enum RateAction {
     /// Read the current polling rate.
     Get,
  
-    /// Set the polling rate. Example: atk-dpi rate set 500
+    /// Set the polling rate. Example: Linx-ATK rate set 500
     Set {
         /// Polling rate in Hz. One of 125, 250, 500, 1000.
         hz: u32,
@@ -162,7 +162,7 @@ enum SensorModeAction {
     /// Read the current sensor sampling mode.
     Get,
  
-    /// Set the sensor sampling mode. Example: atk-dpi sensor-mode set competitive
+    /// Set the sensor sampling mode. Example: Linux-ATK sensor-mode set competitive
     Set {
         #[arg(value_enum)]
         mode: SensorModeArg,
@@ -182,7 +182,7 @@ enum LodAction {
     /// Read the current LOD (lift-off distance) tolerance.
     Get,
  
-    /// Set the LOD tolerance. Example: atk-dpi lod set 2
+    /// Set the LOD tolerance. Example: Linux-ATK lod set 2
     Set {
         /// LOD tolerance in mm. One of 1, 2.
         mm: u8,
@@ -194,7 +194,7 @@ enum MoveSyncAction {
     /// Read whether motion sync is currently enabled.
     Get,
  
-    /// Set motion sync on or off. Example: atk-dpi move-sync set true
+    /// Set motion sync on or off. Example: Linux-ATK move-sync set true
     Set {
         /// true to enable, false to disable.
         #[arg(action = clap::ArgAction::Set)]
@@ -202,7 +202,7 @@ enum MoveSyncAction {
     },
 }
  
-/// Actions for `atk-dpi battery`.
+/// Actions for `Linux-ATK battery`.
 #[derive(Subcommand, Clone, Copy)]
 enum BatteryAction {
     /// Read current battery percentage and charging status.
@@ -328,7 +328,7 @@ fn resolve_ids(api: &HidApi, vid: Option<u16>, pid: Option<u16>) -> Result<(u16,
     }
     bail!(
         "Could not automatically detect the device. \
-         Run `atk-dpi list`, find your mouse and pass --vid/--pid explicitly."
+         Run `Linux-ATK list`, find your mouse and pass --vid/--pid explicitly."
     )
 }
  
@@ -337,7 +337,7 @@ fn open_device(vid: u16, pid: u16, usage_page: u16, usage: u16) -> Result<Device
         anyhow::anyhow!(
             "failed to open device {vid:04x}:{pid:04x} \
              (usage_page={usage_page:#06x}, usage={usage:#06x}): {e}\n\
-             Try `atk-dpi list` to see the actual usage_page/usage values \
+             Try `Linux-ATK list` to see the actual usage_page/usage values \
              for all interfaces of this device."
         )
     })
@@ -369,7 +369,7 @@ fn autodetect_interface(vid: u16, pid: u16, debug: bool) -> Result<Device> {
     }
     bail!(
         "Could not find a working HID interface among the known candidates \
-         for device {vid:04x}:{pid:04x}. Run `atk-dpi list`, find the \
+         for device {vid:04x}:{pid:04x}. Run `Linux-ATK list`, find the \
          vendor-specific interface (usage_page is usually 0xffXX), and pass \
          it explicitly via --usage-page/--usage."
     )
