@@ -658,9 +658,9 @@ fn get_sensor_mode(device: &Device, debug: bool) -> Result<()> {
 /// Sets the sensor sampling mode, leaving the unrelated pairs 0 and 1 at
 /// this address untouched — same read-modify-write approach as `set_rate`.
 fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<()> {
-    let value: u8 = match mode {
-        SensorModeArg::Base => 0,
-        SensorModeArg::Competitive => 1,
+    let (value, name): (u8, &str) = match mode {
+        SensorModeArg::Base => (0, "base"),
+        SensorModeArg::Competitive => (1, "competitive"),
     };
  
     let mut data = read_eeprom(device, EEPROMAddress::SensorEnable, 6, debug)?;
@@ -677,7 +677,7 @@ fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<
  
     write_eeprom(device, EEPROMAddress::SensorEnable, &data, debug)?;
  
-    println!("Sensor mode set to {mode:?}.");
+    println!("Sensor mode set to {name}.");
     Ok(())
 }
  
