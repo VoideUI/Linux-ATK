@@ -150,7 +150,7 @@ enum RateAction {
     /// Read the current polling rate.
     Get,
  
-    /// Set the polling rate. Example: Linx-ATK rate set 500
+    /// Set the polling rate. Example: Linux-ATK rate set 500
     Set {
         /// Polling rate in Hz. One of 125, 250, 500, 1000.
         hz: u32,
