@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "Linux-ATK"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hidapi",
+ "libatk-rs",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -57,16 +67,6 @@ name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
-
-[[package]]
-name = "atk-dpi-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "hidapi",
- "libatk-rs",
-]
 
 [[package]]
 name = "cc"
