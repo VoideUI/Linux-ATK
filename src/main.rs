@@ -516,9 +516,6 @@ fn set_dpi(device: &Device, slot: u8, value: u32, debug: bool) -> Result<()> {
     if !(1..=8).contains(&slot) {
         bail!("Profile number must be between 1 and 8, got {slot}");
     }
-    if !(100..=30000).contains(&value) {
-        bail!("DPI must be in the range 100-30000, got {value}");
-    }
  
     let pair_index = (slot - 1) / 2; // 0..=3, which of the 4 pairs
     let is_second_in_pair = (slot - 1) % 2 == 1; // first or second profile of the pair
@@ -661,9 +658,9 @@ fn get_sensor_mode(device: &Device, debug: bool) -> Result<()> {
 /// Sets the sensor sampling mode, leaving the unrelated pairs 0 and 1 at
 /// this address untouched — same read-modify-write approach as `set_rate`.
 fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<()> {
-    let (value, name): (u8, &str) = match mode {
-        SensorModeArg::Base => (0, "base"),
-        SensorModeArg::Competitive => (1, "competitive"),
+    let value: u8 = match mode {
+        SensorModeArg::Base => 0,
+        SensorModeArg::Competitive => 1,
     };
  
     let mut data = read_eeprom(device, EEPROMAddress::SensorEnable, 6, debug)?;
@@ -680,7 +677,7 @@ fn set_sensor_mode(device: &Device, mode: SensorModeArg, debug: bool) -> Result<
  
     write_eeprom(device, EEPROMAddress::SensorEnable, &data, debug)?;
  
-    println!("Sensor mode set to {name}.");
+    println!("Sensor mode set to {mode:?}.");
     Ok(())
 }
  
