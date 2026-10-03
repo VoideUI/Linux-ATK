@@ -1,6 +1,6 @@
 [package]
 name = "Linux-ATK"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "Terminal utility for controlling DPI of ATK/VXE mice on Linux"
 license = "GPL-3.0"
