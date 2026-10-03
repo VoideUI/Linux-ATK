@@ -49,7 +49,7 @@ impl CommandDescriptor for BatteryCommand {}
 #[command(
     name = "Linux-ATK",
     version,
-    about = "Manage DPI on ATK/VXE mice over HID"
+    about = "Control ATK/VXE mice over HID: DPI, polling rate, sensor mode, LOD, motion sync and battery"
 )]
 struct Cli {
     /// Explicitly specify the device Vendor ID in hex (e.g. 373b). Usually
